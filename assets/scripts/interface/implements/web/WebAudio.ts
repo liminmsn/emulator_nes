@@ -1,4 +1,6 @@
-export default class {
+import Audio from "../../interface/Audio";
+
+export default class WebAudio implements Audio {
     private audioContext: AudioContext | null = null;
     private processor: ScriptProcessorNode | null = null;
     private gainNode: GainNode | null = null;

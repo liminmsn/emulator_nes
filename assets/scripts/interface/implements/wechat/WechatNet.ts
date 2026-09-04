@@ -1,8 +1,10 @@
-export default class {
+import Net from "../../interface/Net";
+
+export default class WechatNet implements Net {
     /**
      * 微信小游戏 wx.request 封装，下载二进制 ArrayBuffer
      */
-    static wxFetchArrayBuffer(url: string): Promise<ArrayBuffer> {
+    fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
         return new Promise((resolve, reject) => {
             wx.request({
                 url: url,

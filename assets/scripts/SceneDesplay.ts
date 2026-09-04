@@ -1,7 +1,9 @@
 import { _decorator, Component, Sprite, SpriteFrame, Texture2D, Rect, } from 'cc';
+import { WebNet } from './interface/implements/web/WebNet';
+import WebAudio from './interface/implements/web/WebAudio';
+import Audio from './interface/Audio';
+import Net from './interface/Net';
 import * as jsnes from 'jsnes';
-import NESAudio from './utils/NESAudio';
-import Net from './utils/Net';
 const { ccclass, property } = _decorator;
 
 @ccclass('SceneDesplay')
@@ -10,13 +12,18 @@ export class SceneDesplay extends Component {
     public sprite: Sprite = null!;
 
     private nes: jsnes.NES | null = null;
-    private audio: NESAudio | null = null;
     private texture: Texture2D | null = null;
     private spriteFrame: SpriteFrame | null = null;
 
-    private static readonly WIDTH: number = 256;
-    private static readonly HEIGHT: number = 240;
-    private static readonly PIXEL_COUNT: number = SceneDesplay.WIDTH * SceneDesplay.HEIGHT;
+    private net: Net | null = null;
+    private nesaudio: Audio | null = null;
+    protected onLoad(): void {
+        if (window) {
+            this.net = new WebNet();
+            this.nesaudio = new WebAudio();
+        }
+
+    }
 
     async start(): Promise<void> {
         console.log('[NES] 初始化');
@@ -44,6 +51,9 @@ export class SceneDesplay extends Component {
     //
     // Uint8Array 用于上传到 Texture。
     // ============================================================
+    private static readonly WIDTH: number = 256;
+    private static readonly HEIGHT: number = 240;
+    private static readonly PIXEL_COUNT: number = SceneDesplay.WIDTH * SceneDesplay.HEIGHT;
     private readonly displayBuffer: ArrayBuffer = new ArrayBuffer(SceneDesplay.PIXEL_COUNT * 4);
     private readonly displayU8: Uint8Array = new Uint8Array(this.displayBuffer);
     private readonly displayU32: Uint32Array = new Uint32Array(this.displayBuffer);
@@ -105,19 +115,8 @@ export class SceneDesplay extends Component {
     private async loadROM(): Promise<void> {
         console.log('[NES] 开始加载 ROM:', this.ROM_URL);
         try {
-            let romBuffer: ArrayBuffer;
-            // 微信小游戏环境
-            if (typeof wx != 'undefined' && wx.request) {
-                romBuffer = await Net.wxFetchArrayBuffer(this.ROM_URL);
-            } else {
-                const response: Response = await fetch(this.ROM_URL);
-                if (!response.ok) {
-                    throw new Error(`ROM HTTP ${response.status}: ${response.statusText}`);
-                }
-                romBuffer = await response.arrayBuffer();
-            }
+            const romBuffer = await this.net.fetchArrayBuffer(this.ROM_URL);
             console.log('[NES] ROM ArrayBuffer:', romBuffer.byteLength, 'bytes');
-
             // ========================================================
             // ROM 最小长度
             // ========================================================
@@ -126,6 +125,7 @@ export class SceneDesplay extends Component {
             }
 
             const header: Uint8Array = new Uint8Array(romBuffer, 0, 16);
+
             console.log('[NES] iNES Header:', Array.from(header).map((value: number) => value.toString(16).padStart(2, '0')).join(' '));
             // ========================================================
             // NES 魔数
@@ -138,8 +138,7 @@ export class SceneDesplay extends Component {
             // ========================================================
             // 创建 音频输出
             // ========================================================
-            this.audio = new NESAudio();
-            this.audio.start();
+            this.nesaudio.start();
             // ========================================================
             // 创建 JSNES
             // ========================================================
@@ -151,10 +150,7 @@ export class SceneDesplay extends Component {
                     //     console.log('[NES] Frame:', this.frameCount);
                     // }
                 },
-                onAudioSample: (l, r): void => {
-                    this.audio.push(l, r);
-                    // console.log(l, r);
-                },
+                onAudioSample: (l, r): void => this.nesaudio.push(l, r),
                 emulateSound: true,
             });
             this.nes.loadROM(romBuffer);
@@ -284,24 +280,27 @@ export class SceneDesplay extends Component {
         }
     }
 
-    public getNES(): jsnes.NES | null {
+    getNES(): jsnes.NES | null {
         return this.nes;
     }
-    public isRunning(): boolean {
+
+    isRunning(): boolean {
         return this.isReady;
     }
-    public getFrameCount(): number {
+
+    getFrameCount(): number {
         return this.frameCount;
     }
+
     onDestroy(): void {
-        this.audio.destroy();
-        this.audio = null;
-        this.nes = null;
         this.texture = null;
         this.isReady = false;
         this.spriteFrame = null;
         this.frameAccumulator = 0;
         this.frameCount = 0;
+        this.nes = null;
         console.log('[NES] 销毁');
+        this.nesaudio = null;
+        this.nesaudio.destroy();
     }
 }
