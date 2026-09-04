@@ -4,6 +4,7 @@
 
   /* Add your custom configuration here. */
   "compilerOptions": {
+    "target": "es2025",
     "ignoreDeprecations": "6.0",
     "strict": false
   }
