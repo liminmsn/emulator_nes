@@ -1,6 +1,6 @@
 import { _decorator, Button, Component, NodeEventType } from "cc";
 
-export abstract class CCComponent extends Component {
+export default abstract class CCComponent extends Component {
     protected onLoad(): void {
         this.node.children.filter(item => {
             if (item.getComponent(Button)) {

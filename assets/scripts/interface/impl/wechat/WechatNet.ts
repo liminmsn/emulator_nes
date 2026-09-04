@@ -1,4 +1,4 @@
-import Net from "../../interface/Net";
+import Net from "../../Net";
 
 export default class WechatNet implements Net {
     /**

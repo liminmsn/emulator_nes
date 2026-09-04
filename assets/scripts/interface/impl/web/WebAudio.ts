@@ -1,4 +1,4 @@
-import Audio from "../../interface/Audio";
+import Audio from "../../Audio";
 
 export default class WebAudio implements Audio {
     private audioContext: AudioContext | null = null;

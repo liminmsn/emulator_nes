@@ -1,34 +1,124 @@
-import { _decorator, Component, Sprite, SpriteFrame, Texture2D, Rect, } from 'cc';
-import { WebNet } from './interface/implements/web/WebNet';
-import WebAudio from './interface/implements/web/WebAudio';
-import Audio from './interface/Audio';
-import Net from './interface/Net';
 import * as jsnes from 'jsnes';
+import { _decorator, Sprite, SpriteFrame, Texture2D, Rect, } from 'cc';
+import Audio from './interface/Audio';
+import CCPlatform from './lib/CCplatform';
+import WebAudio from './interface/impl/web/WebAudio';
 const { ccclass, property } = _decorator;
 
 @ccclass('SceneDesplay')
-export class SceneDesplay extends Component {
+export class SceneDesplay extends CCPlatform {
     @property(Sprite)
     public sprite: Sprite = null!;
 
     private nes: jsnes.NES | null = null;
+    private nesaudio: Audio | null = null;
     private texture: Texture2D | null = null;
     private spriteFrame: SpriteFrame | null = null;
 
-    private net: Net | null = null;
-    private nesaudio: Audio | null = null;
-    protected onLoad(): void {
-        if (window) {
-            this.net = new WebNet();
-            this.nesaudio = new WebAudio();
-        }
-
-    }
-
-    async start(): Promise<void> {
+    protected async start() {
         console.log('[NES] 初始化');
         this.createTexture();
         await this.loadROM();
+    }
+
+    // ============================================================
+    // FPS
+    // ============================================================
+    private readonly FRAME_INTERVAL: number = 1 / 60;
+    private frameAccumulator: number = 0;
+    private frameCount: number = 0;
+    protected update(dt: number) {
+        if (!this.isReady || !this.nes) {
+            return;
+        }
+        // ------------------------------------------------------------
+        // 累计时间
+        // ------------------------------------------------------------
+        this.frameAccumulator += dt;
+        // ------------------------------------------------------------
+        // 不足一帧
+        // ------------------------------------------------------------
+        if (this.frameAccumulator < this.FRAME_INTERVAL) {
+            return;
+        }
+        // ------------------------------------------------------------
+        // 消费时间
+        // ------------------------------------------------------------
+        this.frameAccumulator = this.frameAccumulator % this.FRAME_INTERVAL;
+        // ------------------------------------------------------------
+        // NES Frame
+        // ------------------------------------------------------------
+        try {
+            this.nes.frame();
+        } catch (error) {
+            console.error('[NES] frame() 错误:', error);
+            this.isReady = false;
+        }
+    }
+
+    // ============================================================
+    // NES 状态
+    // ============================================================
+    private isReady: boolean = false;
+    // ============================================================
+    // 加载 ROM
+    // ============================================================
+    private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/Adventure_Island_(USA).nes';
+    async loadROM(): Promise<void> {
+        console.log('[NES] 开始加载 ROM:', this.ROM_URL);
+        try {
+            const romBuffer = await this.net.fetchArrayBuffer(this.ROM_URL);
+            console.log('[NES] ROM ArrayBuffer:', romBuffer.byteLength, 'bytes');
+            // ========================================================
+            // ROM 最小长度
+            // ========================================================
+            if (romBuffer.byteLength < 16) {
+                throw new Error('ROM 文件过小');
+            }
+
+            const header: Uint8Array = new Uint8Array(romBuffer, 0, 16);
+
+            console.log('[NES] iNES Header:', Array.from(header).map((value: number) => value.toString(16).padStart(2, '0')).join(' '));
+            // ========================================================
+            // NES 魔数
+            // ========================================================
+            if (header[0] !== 0x4e || header[1] !== 0x45 || header[2] !== 0x53 || header[3] !== 0x1a) {
+                throw new Error('不是有效的 NES ROM');
+            }
+
+
+            // ========================================================
+            // 创建 音频输出
+            // ========================================================
+            this.nesaudio = new WebAudio();
+            this.nesaudio.start();
+            // ========================================================
+            // 创建 JSNES
+            // ========================================================
+            this.nes = new jsnes.NES({
+                onFrame: (frameBuffer: Uint32Array): void => {
+                    this.frameCount++;
+                    this.updateTexture(frameBuffer);
+                    // if (this.frameCount === 1 || this.frameCount % 60 === 0) {
+                    //     console.log('[NES] Frame:', this.frameCount);
+                    // }
+                },
+                onAudioSample: (l, r): void => this.nesaudio.push(l, r),
+                emulateSound: true,
+            });
+            this.nes.loadROM(romBuffer);
+            console.log('[NES] ROM loadROM 成功');
+            this.isReady = true;
+            // ========================================================
+            // 立即运行第一帧
+            // ========================================================
+            this.nes.frame();
+            console.log('[NES] 模拟器启动成功');
+        } catch (error) {
+            console.error('[NES] ROM 加载失败:', error);
+            this.isReady = false;
+            this.nes = null;
+        }
     }
 
     // ============================================================
@@ -57,7 +147,7 @@ export class SceneDesplay extends Component {
     private readonly displayBuffer: ArrayBuffer = new ArrayBuffer(SceneDesplay.PIXEL_COUNT * 4);
     private readonly displayU8: Uint8Array = new Uint8Array(this.displayBuffer);
     private readonly displayU32: Uint32Array = new Uint32Array(this.displayBuffer);
-    private createTexture(): void {
+    createTexture(): void {
         console.log('[NES] 创建 Texture');
         this.texture = new Texture2D();
 
@@ -104,71 +194,6 @@ export class SceneDesplay extends Component {
     }
 
     // ============================================================
-    // NES 状态
-    // ============================================================
-    private isReady: boolean = false;
-    // ============================================================
-    // 加载 ROM
-    // ============================================================
-    private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/Adventure_Island_(USA).nes';
-    // private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/rzsg.nes';
-    private async loadROM(): Promise<void> {
-        console.log('[NES] 开始加载 ROM:', this.ROM_URL);
-        try {
-            const romBuffer = await this.net.fetchArrayBuffer(this.ROM_URL);
-            console.log('[NES] ROM ArrayBuffer:', romBuffer.byteLength, 'bytes');
-            // ========================================================
-            // ROM 最小长度
-            // ========================================================
-            if (romBuffer.byteLength < 16) {
-                throw new Error('ROM 文件过小');
-            }
-
-            const header: Uint8Array = new Uint8Array(romBuffer, 0, 16);
-
-            console.log('[NES] iNES Header:', Array.from(header).map((value: number) => value.toString(16).padStart(2, '0')).join(' '));
-            // ========================================================
-            // NES 魔数
-            // ========================================================
-            if (header[0] !== 0x4e || header[1] !== 0x45 || header[2] !== 0x53 || header[3] !== 0x1a) {
-                throw new Error('不是有效的 NES ROM');
-            }
-
-
-            // ========================================================
-            // 创建 音频输出
-            // ========================================================
-            this.nesaudio.start();
-            // ========================================================
-            // 创建 JSNES
-            // ========================================================
-            this.nes = new jsnes.NES({
-                onFrame: (frameBuffer: Uint32Array): void => {
-                    this.frameCount++;
-                    this.updateTexture(frameBuffer);
-                    // if (this.frameCount === 1 || this.frameCount % 60 === 0) {
-                    //     console.log('[NES] Frame:', this.frameCount);
-                    // }
-                },
-                onAudioSample: (l, r): void => this.nesaudio.push(l, r),
-                emulateSound: true,
-            });
-            this.nes.loadROM(romBuffer);
-            console.log('[NES] ROM loadROM 成功');
-            this.isReady = true;
-            // ========================================================
-            // 立即运行第一帧
-            // ========================================================
-            this.nes.frame();
-            console.log('[NES] 模拟器启动成功');
-        } catch (error) {
-            console.error('[NES] ROM 加载失败:', error);
-            this.isReady = false;
-            this.nes = null;
-        }
-    }
-
-    // ============================================================
     // JSNES FrameBuffer → Cocos Texture
     // ============================================================
     //
@@ -209,7 +234,7 @@ export class SceneDesplay extends Component {
     // 而是完全按照 JSNES 官方 framebuffer 方式处理。
     //
     // ============================================================
-    private updateTexture(frameBuffer: Uint32Array): void {
+    updateTexture(frameBuffer: Uint32Array): void {
         if (!this.texture) {
             return;
         }
@@ -244,42 +269,6 @@ export class SceneDesplay extends Component {
         this.texture.uploadData(this.displayU8);
     }
 
-
-    // ============================================================
-    // FPS
-    // ============================================================
-    private readonly FRAME_INTERVAL: number = 1 / 60;
-    private frameAccumulator: number = 0;
-    private frameCount: number = 0;
-    update(dt: number): void {
-        if (!this.isReady || !this.nes) {
-            return;
-        }
-        // ------------------------------------------------------------
-        // 累计时间
-        // ------------------------------------------------------------
-        this.frameAccumulator += dt;
-        // ------------------------------------------------------------
-        // 不足一帧
-        // ------------------------------------------------------------
-        if (this.frameAccumulator < this.FRAME_INTERVAL) {
-            return;
-        }
-        // ------------------------------------------------------------
-        // 消费时间
-        // ------------------------------------------------------------
-        this.frameAccumulator = this.frameAccumulator % this.FRAME_INTERVAL;
-        // ------------------------------------------------------------
-        // NES Frame
-        // ------------------------------------------------------------
-        try {
-            this.nes.frame();
-        } catch (error) {
-            console.error('[NES] frame() 错误:', error);
-            this.isReady = false;
-        }
-    }
-
     getNES(): jsnes.NES | null {
         return this.nes;
     }
@@ -302,5 +291,9 @@ export class SceneDesplay extends Component {
         console.log('[NES] 销毁');
         this.nesaudio = null;
         this.nesaudio.destroy();
+    }
+
+    onBtnClick(key: string, this_: this): void {
+
     }
 }
