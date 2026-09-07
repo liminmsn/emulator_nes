@@ -1,7 +1,9 @@
 
 export { };
 declare global {
-    namespace AAA {
-        class BBB { }
+    interface GameListType {
+        img: string;
+        file: string;
+        name: string;
     }
 }

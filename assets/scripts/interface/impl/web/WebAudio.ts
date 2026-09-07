@@ -4,14 +4,12 @@ export default class WebAudio implements Audio {
     private audioContext: AudioContext | null = null;
     private processor: ScriptProcessorNode | null = null;
     private gainNode: GainNode | null = null;
-
     private leftBuffer: Float32Array = new Float32Array(44100);
     private rightBuffer: Float32Array = new Float32Array(44100);
-
     private writeIndex = 0;
     private readIndex = 0;
     private readonly BUFFER_SIZE = 44100;
-
+    
     public start(): void {
         if (this.audioContext) {
             return;

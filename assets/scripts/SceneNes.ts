@@ -1,24 +1,23 @@
-import * as jsnes from 'jsnes';
-import { _decorator, Sprite, SpriteFrame, Texture2D, Rect, } from 'cc';
-import Audio from './interface/Audio';
+import { _decorator, Sprite, SpriteFrame, Texture2D, Rect, director, } from 'cc';
 import CCPlatform from './lib/CCplatform';
-import WebAudio from './interface/impl/web/WebAudio';
+import * as jsnes from 'jsnes';
+import CCGameData from './lib/CCGameData';
 const { ccclass, property } = _decorator;
 
-@ccclass('SceneDesplay')
-export class SceneDesplay extends CCPlatform {
+@ccclass('SceneNes')
+export class SceneNes extends CCPlatform {
     @property(Sprite)
     public sprite: Sprite = null!;
-
     private nes: jsnes.NES | null = null;
-    private nesaudio: Audio | null = null;
     private texture: Texture2D | null = null;
     private spriteFrame: SpriteFrame | null = null;
+    // private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/Adventure_Island_(USA).nes';
+    private readonly ROM_URL: string = CCGameData.ROM_URL;
 
     protected async start() {
         console.log('[NES] 初始化');
         this.createTexture();
-        await this.loadROM();
+        await this.loadROM(this.ROM_URL);
     }
 
     // ============================================================
@@ -63,11 +62,10 @@ export class SceneDesplay extends CCPlatform {
     // ============================================================
     // 加载 ROM
     // ============================================================
-    private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/Adventure_Island_(USA).nes';
-    async loadROM(): Promise<void> {
+    async loadROM(rom_url: string): Promise<void> {
         console.log('[NES] 开始加载 ROM:', this.ROM_URL);
         try {
-            const romBuffer = await this.net.fetchArrayBuffer(this.ROM_URL);
+            const romBuffer = await this.net.fetchArrayBuffer(rom_url);
             console.log('[NES] ROM ArrayBuffer:', romBuffer.byteLength, 'bytes');
             // ========================================================
             // ROM 最小长度
@@ -90,8 +88,7 @@ export class SceneDesplay extends CCPlatform {
             // ========================================================
             // 创建 音频输出
             // ========================================================
-            this.nesaudio = new WebAudio();
-            this.nesaudio.start();
+            this.audio.start();
             // ========================================================
             // 创建 JSNES
             // ========================================================
@@ -103,11 +100,20 @@ export class SceneDesplay extends CCPlatform {
                     //     console.log('[NES] Frame:', this.frameCount);
                     // }
                 },
-                onAudioSample: (l, r): void => this.nesaudio.push(l, r),
+                onAudioSample: (l, r): void => this.audio.push(l, r),
                 emulateSound: true,
             });
             this.nes.loadROM(romBuffer);
             console.log('[NES] ROM loadROM 成功');
+            // console.log('[NES] ROM info:', {
+            //     isNES2: this.nes.rom.isNES2,
+            //     mapperType: this.nes.rom.mapperType,
+            //     subMapper: this.nes.rom.subMapper,
+            //     prgRomCount: this.nes.rom.romCount,
+            //     chrRomCount: this.nes.rom.vromCount,
+            //     chrRamSize: this.nes.rom.chrRamSize,
+            //     prgRamSize: this.nes.rom.prgRamSize,
+            // });
             this.isReady = true;
             // ========================================================
             // 立即运行第一帧
@@ -143,8 +149,8 @@ export class SceneDesplay extends CCPlatform {
     // ============================================================
     private static readonly WIDTH: number = 256;
     private static readonly HEIGHT: number = 240;
-    private static readonly PIXEL_COUNT: number = SceneDesplay.WIDTH * SceneDesplay.HEIGHT;
-    private readonly displayBuffer: ArrayBuffer = new ArrayBuffer(SceneDesplay.PIXEL_COUNT * 4);
+    private static readonly PIXEL_COUNT: number = SceneNes.WIDTH * SceneNes.HEIGHT;
+    private readonly displayBuffer: ArrayBuffer = new ArrayBuffer(SceneNes.PIXEL_COUNT * 4);
     private readonly displayU8: Uint8Array = new Uint8Array(this.displayBuffer);
     private readonly displayU32: Uint32Array = new Uint32Array(this.displayBuffer);
     createTexture(): void {
@@ -155,8 +161,8 @@ export class SceneDesplay extends CCPlatform {
         // 初始化 256x240 RGBA8888
         // ------------------------------------------------------------
         this.texture.reset({
-            width: SceneDesplay.WIDTH,
-            height: SceneDesplay.HEIGHT,
+            width: SceneNes.WIDTH,
+            height: SceneNes.HEIGHT,
             format: Texture2D.PixelFormat.RGBA8888,
         });
 
@@ -184,7 +190,7 @@ export class SceneDesplay extends CCPlatform {
         // ------------------------------------------------------------
         // 设置完整 Texture Rect
         // ------------------------------------------------------------
-        this.spriteFrame.rect = new Rect(0, 0, SceneDesplay.WIDTH, SceneDesplay.HEIGHT);
+        this.spriteFrame.rect = new Rect(0, 0, SceneNes.WIDTH, SceneNes.HEIGHT);
         // ------------------------------------------------------------
         // 设置 Sprite
         // ------------------------------------------------------------
@@ -201,14 +207,9 @@ export class SceneDesplay extends CCPlatform {
     //
     // JSNES 的官方 Canvas 用法本质上是：
     //
-    // framebuffer32[i] =
-    //     0xff000000 | frameBuffer[i];
-    //
+    // framebuffer32[i] =  0xff000000 | frameBuffer[i];
     // 然后：
-    //
-    // imageData.data.set(
-    //     framebuffer8
-    // );
+    // imageData.data.set(framebuffer8);
     //
     // JSNES 的 framebuffer 数值是：
     //
@@ -242,7 +243,7 @@ export class SceneDesplay extends CCPlatform {
         // ------------------------------------------------------------
         // FrameBuffer 长度
         // ------------------------------------------------------------
-        if (frameBuffer.length < SceneDesplay.PIXEL_COUNT) {
+        if (frameBuffer.length < SceneNes.PIXEL_COUNT) {
             console.error('[NES] FrameBuffer 长度错误:', frameBuffer.length);
             return;
         }
@@ -250,7 +251,7 @@ export class SceneDesplay extends CCPlatform {
         // ------------------------------------------------------------
         // 直接转换
         // ------------------------------------------------------------
-        for (let i = 0; i < SceneDesplay.PIXEL_COUNT; i++) {
+        for (let i = 0; i < SceneNes.PIXEL_COUNT; i++) {
             /**
              * JSNES framebuffer：
              *
@@ -282,6 +283,8 @@ export class SceneDesplay extends CCPlatform {
     }
 
     onDestroy(): void {
+        this.net = null;
+        this.audio = null;
         this.texture = null;
         this.isReady = false;
         this.spriteFrame = null;
@@ -289,11 +292,10 @@ export class SceneDesplay extends CCPlatform {
         this.frameCount = 0;
         this.nes = null;
         console.log('[NES] 销毁');
-        this.nesaudio = null;
-        this.nesaudio.destroy();
     }
-
     onBtnClick(key: string, this_: this): void {
-
+        if (key == "btn_exit") {
+            director.loadScene('main');
+        }
     }
 }
