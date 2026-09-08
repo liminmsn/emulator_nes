@@ -1,159 +1,307 @@
-# Emulator NES 🎮🕹️
+# 🎮 NES 模拟器项目说明
 
-一个基于 **Cocos Creator 3.8.8 + TypeScript + JSNES** 的 NES 模拟器实验项目。它负责把 NES ROM 跑起来，并将 JSNES 输出的画面和音频接入 Cocos 场景：
+这是一个基于 Cocos Creator 3.x + jsnes 的 NES 游戏模拟器演示项目，用于在 Web / 小程序等平台中加载并运行 NES ROM 文件，并将画面渲染到 Cocos 2D 场景中。
 
-```text
-NES ROM 📦
-   ↓ fetch ArrayBuffer
-JSNES ⚙️
-   ├─ Uint32Array 帧缓冲 → Cocos Texture → Sprite 🖼️
-   └─ 音频采样 → WebAudio 🔊
-```
+> ✨ 项目亮点：从 ROM 列表到游戏渲染，再到音频输出，整套流程已经串起来了，适合学习 NES 仿真与 Cocos 集成。
 
-> ⚠️ 当前项目仍处于原型阶段：ROM 地址、输入映射和部分平台适配还需要继续完善。
-
-## ✨ 当前能力
-
-- ✅ 使用 `jsnes` 加载并运行 NES ROM
-- ✅ 创建 `256 × 240` 的 RGBA8888 Cocos Texture
-- ✅ 将 JSNES `frameBuffer` 上传到 Sprite，默认按约 `60 FPS` 推进
-- ✅ Web 端通过 `WebAudio` 播放左右声道采样
-- ✅ 抽象 `Net` / `Audio` 接口，预留 Web 与微信小游戏实现
-- ✅ 统一处理 ROM 魔数校验和加载失败日志
-- 🚧 Cocos 按钮回调目前只打印日志，尚未完成手柄按键映射
-- 🚧 微信小游戏网络实现已存在，但主流程当前仍默认使用 Web 实现
-
-## 🧰 技术栈
-
-| 技术 | 用途 |
-| --- | --- |
-| Cocos Creator 3.8.8 | 场景、组件、Sprite 和 Texture 管理 |
-| TypeScript | 模拟器接入与平台抽象 |
-| [JSNES](https://github.com/bfirsh/jsnes) | NES CPU、PPU、音频和 ROM 模拟 |
-| Web Fetch API | Web 端下载 ROM 二进制数据 |
-| Web Audio API | Web 端输出 NES 音频 |
-
-## 🚀 开始运行
-
-### 1. 环境准备
-
-安装以下工具：
-
-- Cocos Creator `3.8.8` 🧩
-- Node.js 与 npm 📦
-- 一个可以提供 `.nes` 文件的本地 HTTP 服务 🌐
-
-### 2. 安装依赖
-
-在仓库根目录执行：
-
-```bash
-npm install
-```
-
-项目没有额外的 npm scripts，主要通过 Cocos Creator 打开和构建。
-
-### 3. 准备 ROM 服务
-
-当前代码默认从下面的地址加载 ROM：
-
-```text
-http://127.0.0.1:8081/static/Adventure_Island_(USA).nes
-```
-
-请保证该文件真实存在，并让本地静态文件服务监听 `8081` 端口。也可以修改 `assets/scripts/SceneDesplay.ts` 中的 `ROM_URL`，指向自己的 ROM 地址。
-
-> ⚖️ 请仅使用自己拥有或获授权使用的 ROM。项目本身不包含 ROM 文件。
-
-### 4. 使用 Cocos Creator 启动
-
-1. 使用 Cocos Creator `3.8.8` 打开本仓库。
-2. 打开 `assets/main.scene`。
-3. 确认场景中的 Sprite 已绑定到 `SceneDesplay.sprite` 属性。
-4. 点击 **预览 / 运行** ▶️。
-5. 打开控制台查看 `[NES]` 初始化、ROM 加载和运行日志。
-
-## 🗂️ 目录结构
-
-```text
-assets/
-├─ main.scene                         # 主场景
-└─ scripts/
-   ├─ MainScene.ts                    # 主场景按钮回调入口
-   ├─ SceneDesplay.ts                 # NES 核心显示与运行循环
-   ├─ interface/
-   │  ├─ Audio.ts                     # 音频抽象接口
-   │  ├─ Net.ts                       # 网络抽象接口
-   │  └─ implements/
-   │     ├─ web/WebAudio.ts           # Web Audio 实现
-   │     ├─ web/WebNet.ts             # Fetch 实现
-   │     └─ wechat/WechatNet.ts       # 微信小游戏 wx.request 实现
-   └─ lib/
-      └─ CCComponent.ts               # Cocos 按钮事件绑定基类
-build/                                # Cocos 构建产物
-library/                              # Cocos 导入资源缓存
-temp/                                 # Cocos 临时文件
-types/                                # 项目类型声明
-```
-
-## 🧠 核心流程
-
-`SceneDesplay` 的工作顺序如下：
-
-1. `onLoad()` 创建 Web 网络和音频实现。
-2. `start()` 创建黑屏 Texture，并开始加载 ROM。
-3. 校验 ROM 前 4 个字节是否为 iNES 魔数 `NES\x1A`。
-4. 创建 `jsnes.NES`，接收画面帧和音频采样。
-5. 每帧把 `0x00RRGGBB` 补成带 Alpha 的像素，上传给 Cocos Texture。
-6. Cocos `update(dt)` 累计时间，每约 `1 / 60` 秒调用一次 `nes.frame()`。
-
-## 🕹️ 输入映射现状
-
-当前 `MainScene.onBtnClick()` 只会输出按钮名称和组件实例：
-
-```ts
-onBtnClick(key: string, this_: this): void {
-    console.log(key, this_);
-}
-```
-
-因此仓库目前还没有完成 A、B、方向键、Start、Select 等 NES 控制器映射。后续可以在这里根据按钮名称调用 JSNES 的按键接口，实现按下与释放事件。
-
-## 🐛 常见问题
-
-### 页面黑屏
-
-- 检查 Sprite 是否已绑定到 `SceneDesplay.sprite`。
-- 检查 ROM URL 是否可以在浏览器直接访问。
-- 检查 ROM 是否是有效的 iNES 文件。
-- 查看控制台是否出现 `ROM 加载失败` 或 `FrameBuffer 长度错误`。
-
-### ROM 加载失败或跨域
-
-ROM 通过浏览器 `fetch` 获取，静态服务器需要允许当前预览页面的跨域请求（CORS）。同时确认服务返回的是二进制文件，而不是 HTML 错误页。
-
-### 没有声音
-
-浏览器可能会阻止未经过用户交互的音频上下文。先点击页面或游戏区域，再检查浏览器音频权限和控制台日志。🔊
-
-### 微信小游戏无法直接运行
-
-微信平台需要使用 `WechatNet`，并将 ROM 服务器域名加入合法域名配置；同时还需要根据 Cocos 的平台构建流程接入对应实现。📱
-
-## 🛠️ 后续计划
-
-- [ ] 完成 NES 手柄按键映射
-- [ ] 将 ROM 地址改为可配置项
-- [ ] 增加暂停、重置和切换 ROM 功能
-- [ ] 完善微信小游戏平台切换
-- [ ] 增加 ROM 加载进度和错误提示界面
-- [ ] 优化音频缓冲与移动端兼容性
-- [ ] 增加基础运行检查和回归测试
-
-## 📜 许可与 ROM 说明
-
-本仓库代码使用的第三方依赖请遵循其各自许可证。ROM 文件可能受版权保护，仓库不提供任何 ROM，也不建议在未经授权的情况下分发或使用 ROM。🔒
+项目核心逻辑主要包含：
+- 🎯 通过 HTTP 请求获取游戏列表
+- 📦 下载并解析 NES ROM
+- 🧠 使用 jsnes 进行 CPU / PPU / 音频模拟
+- 🖼️ 将 FrameBuffer 转成 Cocos Texture 并显示在 Sprite 上
+- 🎲 提供游戏卡片列表与场景切换逻辑
 
 ---
 
-愿每一次 `frame()` 都稳定输出，愿每一发跳跃都不掉帧！🚀🎮
+## 1. 🚀 项目简介
+
+该项目采用 Cocos Creator 开发，依赖 `jsnes` 库实现真实的 NES 模拟器能力。运行时会读取本地或远程服务器中的 ROM 文件，并在场景中播放对应游戏内容。
+
+从代码实现看，项目支持以下几个关键能力：
+- 游戏列表获取：通过 `getGameList()` 请求 JSON 数据
+- ROM 资源加载：通过 `fetchArrayBuffer()` 下载 `.nes` 文件
+- 图像输出：JSNES 的 `frameBuffer` 映射到 Cocos 的 `Texture2D`
+- 音频输出：通过 `onAudioSample` 推送 PCM 音频
+- 场景管理：从首页选择游戏，跳转到 `nes` 场景运行
+
+---
+
+## 2. ⚙️ 功能特性
+
+### 2.1 🎮 游戏列表页
+- 首页中展示 ROM 列表
+- 每个游戏以卡片形式展示
+- 点击卡片后跳转到游戏运行场景
+
+### 2.2 📥 ROM 加载与校验
+- 请求 `.nes` 文件
+- 检查文件头是否为合法的 iNES 标识：`4E 45 53 1A`
+- 对非法 ROM 进行错误处理
+
+### 2.3 🖼️ 画面渲染
+- JSNES 输出的 `frameBuffer` 会被转换成 RGBA8888
+- 通过 `Texture2D.uploadData()` 实时更新显示内容
+- 输出分辨率固定为 `256 x 240`
+
+### 2.4 🔊 音频模拟
+- `emulateSound: true`
+- 每帧音频采样通过 `onAudioSample` 回调进行输出
+- 由项目的 `audio` 类统一处理播放
+
+### 2.5 🌐 平台兼容
+- 代码结构中存在 `web` 与 `wechat` 两种网络实现层
+- 可扩展到浏览器或微信小游戏等环境
+
+---
+
+## 3. 🧩 技术栈
+
+- Cocos Creator：3.8.8
+- TypeScript
+- jsnes：^2.1.0
+- Web / 小程序网络接口抽象
+
+依赖配置见 `package.json`：
+
+```json
+{
+  "name": "emulator_nes",
+  "dependencies": {
+    "jsnes": "^2.1.0"
+  }
+}
+```
+
+---
+
+## 4. 📁 项目结构说明
+
+```text
+emulator_nes/
+├── assets/
+│   ├── scripts/
+│   │   ├── SceneMain.ts        # 游戏列表页
+│   │   ├── SceneNes.ts         # NES 渲染与运行主逻辑
+│   │   ├── lib/
+│   │   │   ├── CCNetConfig.ts  # 接口地址配置
+│   │   │   ├── CCGameData.ts   # 全局缓存
+│   │   │   └── ...
+│   │   ├── interface/
+│   │   │   ├── Net.ts
+│   │   │   └── impl/
+│   │   └── prefab/
+│   │       └── Card.ts
+│   └── ...
+├── build/
+├── library/
+├── package.json
+├── tsconfig.json
+├── README.md
+└── ...
+```
+
+关键文件说明：
+- `assets/scripts/SceneNes.ts`：最核心的模拟器入口，负责初始化 jsnes、加载 ROM、渲染帧画面、处理音频
+- `assets/scripts/SceneMain.ts`：首页加载逻辑，拉取游戏列表并切换到指定 ROM
+- `assets/scripts/lib/CCNetConfig.ts`：统一配置服务端地址
+- `assets/scripts/interface/impl/web/WebNet.ts`：浏览器端网络实现
+
+---
+
+## 5. ▶️ 运行方式
+
+### 5.1 🧰 准备资源
+
+项目默认读取远程资源地址：
+
+```ts
+static baseUrl = "http://127.0.0.1:8081";
+```
+
+这意味着你需要提供一个本地静态资源服务，确保如下资源可访问：
+
+- `http://127.0.0.1:8081/static/game_list.json`
+- `http://127.0.0.1:8081/static/rom/*.nes`
+
+示例资源列表 JSON 格式大致如下：
+
+```json
+[
+  {
+    "name": "Adventure Island",
+    "img": "/static/img/adventure_island.png",
+    "file": "/static/rom/Adventure_Island_(USA).nes"
+  }
+]
+```
+
+### 5.2 🌍 启动本地静态服务器
+
+建议使用任意本地静态文件服务器（如 Python、Node 或 Nginx）来托管 `static` 目录，使浏览器能够成功访问：
+
+```bash
+python -m http.server 8081
+```
+
+如果是项目本身已配套静态资源目录，则将资源放到对应的 `static` 路径下，并确保端口与 `CCNetConfig.baseUrl` 保持一致。
+
+### 5.3 🕹️ 在 Cocos Creator 中打开项目
+
+1. 打开 Cocos Creator 3.8.8
+2. 导入当前项目目录
+3. 进入主场景并运行预览
+4. 主页会自动请求 `game_list.json`
+5. 点击游戏卡片后，加载对应 ROM 并进入 `nes` 场景
+
+---
+
+## 6. ⚙️ 配置说明
+
+### 6.1 🌐 网络配置
+
+文件：`assets/scripts/lib/CCNetConfig.ts`
+
+```ts
+export default class {
+    static baseUrl = "http://127.0.0.1:8081";
+    static game_list = `${this.baseUrl}/static/game_list.json`;
+}
+```
+
+如果你要更换服务地址、静态目录或部署环境，需要同步修改这里的 `baseUrl`。
+
+### 6.2 🗂️ 游戏列表缓存
+
+文件：`assets/scripts/lib/CCGameData.ts`
+
+这里用于缓存请求回来的游戏列表，避免重复网络请求。实际流程如下：
+- 首次进入首页时调用 `getGameList()`
+- 将游戏列表保存到 `gameList`
+- 点击某个游戏后将 `ROM_URL` 写入全局数据
+- 进入 `nes` 场景后通过 `loadROM()` 加载对应 ROM
+
+### 6.3 🎯 ROM 路径
+
+文件：`assets/scripts/SceneNes.ts`
+
+```ts
+private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/rom/Adventure_Island_(USA).nes';
+```
+
+此处为默认演示 ROM 地址。实际项目中可改为从列表中传入的动态 URL。当前代码中也保留了注释形式：
+
+```ts
+// private readonly ROM_URL: string = CCGameData.ROM_URL;
+```
+
+这说明在正式使用时，推荐从全局数据中读取当前选中的 ROM 路径。
+
+---
+
+## 7. 🧠 关键代码实现说明
+
+### 7.1 📥 ROM 加载
+
+`SceneNes.loadROM()` 中会：
+- 读取 `ArrayBuffer`
+- 判断是否满足 NES 文件头
+- 创建 JSNES 实例
+- 调用 `this.nes.loadROM(romBuffer)`
+- 设置 `onFrame` 和 `onAudioSample` 回调
+
+关键代码流程：
+
+```ts
+this.nes = new jsnes.NES({
+    onFrame: (frameBuffer: Uint32Array): void => {
+        this.updateTexture(frameBuffer);
+    },
+    onAudioSample: (l, r): void => this.audio.push(l, r),
+    emulateSound: true,
+});
+this.nes.loadROM(romBuffer);
+```
+
+### 7.2 🖼️ 帧渲染
+
+`updateTexture()` 会把 JSNES 输出的 `frameBuffer` 按照相同布局转换为 Cocos 可接受的 `Texture2D` 数据。例如：
+
+- JSNES 帧缓冲使用 `0x00RRGGBB`
+- 需要补 alpha 通道，形成 `0xFFRRGGBB`
+- 写入 `Uint8Array` 后上传至纹理
+
+### 7.3 ⏱️ 帧同步
+
+`SceneNes.update()` 中通过累积时间控制模拟器刷新频率：
+
+```ts
+private readonly FRAME_INTERVAL: number = 1 / 60;
+```
+
+这使模拟器以大约 60 FPS 的节奏推进 NES 运行。
+
+---
+
+## 8. ❓ 常见问题
+
+### Q1：ROM 无法加载
+
+可能原因：
+- 静态资源服务未启动
+- 地址配置错误
+- 资源文件不是有效 NES ROM
+
+解决办法：
+- 检查 `CCNetConfig.baseUrl`
+- 确认 `static/rom` 中文件路径正确
+- 确认文件头是否为 `4E 45 53 1A`
+
+### Q2：画面显示黑屏
+
+可能原因：
+- `Texture2D` 初始化错误
+- `frameBuffer` 长度不符合 `256 * 240`
+- `onFrame` 未正常触发
+
+解决办法：
+- 检查 `createTexture()` 是否执行成功
+- 确认 `updateTexture()` 处理了每一帧数据
+- 查看控制台的 `[NES]` 日志
+
+### Q3：音频没有声音
+
+可能原因：
+- `emulateSound` 未开启
+- 浏览器或平台限制了音频播放
+- `audio.start()` 未执行
+
+解决办法：
+- 确认 `this.audio.start()` 已调用
+- 在浏览器中手动允许音频播放
+- 检查 `onAudioSample` 是否有数据进入
+
+---
+
+## 9. 🎯 适用场景
+
+该项目适合以下用途：
+- 学习 NES 模拟器原理
+- Cocos Creator 与 JSNES 集成实践
+- 2D 游戏画面实时渲染案例
+- 浏览器端/小程序端仿真游戏演示
+
+---
+
+## 10. ⚠️ 版权与使用说明
+
+- 本项目以教学与学习为主要目的。
+- ROM 文件属于第三方游戏资源，使用前请确认具备合法授权。
+- 该项目不附带任何商业级 ROM 发行授权。
+
+---
+
+## 11. 📬 联系信息
+
+- 作者微信号：liminmsn
+
+如果你需要进一步扩展功能（如按键映射、存档、暂停、重启、手柄支持等），可以在现有结构上继续补充输入管理与状态恢复模块。

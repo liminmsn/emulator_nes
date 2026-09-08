@@ -1,17 +1,21 @@
 import { _decorator, Sprite, SpriteFrame, Texture2D, Rect, director, } from 'cc';
-import CCPlatform from './lib/CCplatform';
 import * as jsnes from 'jsnes';
+import CCPlatform from './lib/CCplatform';
 import CCGameData from './lib/CCGameData';
+import { PrefabController } from './prefab/PrefabController';
 const { ccclass, property } = _decorator;
 
 @ccclass('SceneNes')
 export class SceneNes extends CCPlatform {
     @property(Sprite)
-    public sprite: Sprite = null!;
+    public sprite: Sprite = null;
+    @property(PrefabController)
+    controller: PrefabController;
+
     private nes: jsnes.NES | null = null;
     private texture: Texture2D | null = null;
     private spriteFrame: SpriteFrame | null = null;
-    // private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/Adventure_Island_(USA).nes';
+    // private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/rom/Adventure_Island_(USA).nes';
     private readonly ROM_URL: string = CCGameData.ROM_URL;
 
     protected async start() {
@@ -23,7 +27,7 @@ export class SceneNes extends CCPlatform {
     // ============================================================
     // FPS
     // ============================================================
-    private readonly FRAME_INTERVAL: number = 1 / 60;
+    private readonly FRAME_INTERVAL: number = 1 / 90;
     private frameAccumulator: number = 0;
     private frameCount: number = 0;
     protected update(dt: number) {
@@ -101,8 +105,9 @@ export class SceneNes extends CCPlatform {
                     // }
                 },
                 onAudioSample: (l, r): void => this.audio.push(l, r),
-                emulateSound: true,
+                // emulateSound: true,
             });
+            this.controller.setNes(this.nes);
             this.nes.loadROM(romBuffer);
             console.log('[NES] ROM loadROM 成功');
             // console.log('[NES] ROM info:', {
@@ -284,14 +289,15 @@ export class SceneNes extends CCPlatform {
 
     onDestroy(): void {
         this.net = null;
+        this.audio.destroy();
         this.audio = null;
         this.texture = null;
-        this.isReady = false;
         this.spriteFrame = null;
-        this.frameAccumulator = 0;
-        this.frameCount = 0;
         this.nes = null;
         console.log('[NES] 销毁');
+        this.frameAccumulator = 0;
+        this.frameCount = 0;
+        this.isReady = false;
     }
     onBtnClick(key: string, this_: this): void {
         if (key == "btn_exit") {
