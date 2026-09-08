@@ -1,4 +1,4 @@
-import { _decorator, Button, EventTouch, input, Input, math, Node, NodeEventType, sp, UITransform, v2, v3, Vec2, Vec3 } from 'cc';
+import { _decorator, Button, EventTouch, Input, Node, NodeEventType, UITransform, v3, Vec2, Vec3 } from 'cc';
 import CCcomponent from '../lib/CCcomponent';
 import { Controller, NES } from 'jsnes';
 const { ccclass, type } = _decorator;
@@ -20,7 +20,7 @@ export class PrefabController extends CCcomponent {
         this.convertToNodeSpaceARNode = this.barBg;
         this.boundary = this.barBg.getComponent(UITransform).height / 2;
         this.barBg.on(Input.EventType.TOUCH_START, this.onSTARTMOVE.bind(this));
-        this.barBg.on(Input.EventType.TOUCH_MOVE, this.onSTARTMOVE.bind(this));
+        this.barBg.on(Input.EventType.TOUCH_MOVE, this.onSTARTMOVE.bind(this)); //已知问题微信小程序会出现声音画面不协调卡帧问题
         this.barBg.on(Input.EventType.TOUCH_END, this.onOVER.bind(this));
         this.barBg.on(Input.EventType.TOUCH_CANCEL, this.onOVER.bind(this));
         this.btns.forEach(btn => {
@@ -83,8 +83,8 @@ export class PrefabController extends CCcomponent {
             }
         });
         nextPressed.forEach(key => {
-            this.onBtnClick(key, this);
             if (!this.previousPressed.includes(key)) {
+                this.onBtnClick(key, this);
             }
         });
         this.previousPressed = nextPressed;
