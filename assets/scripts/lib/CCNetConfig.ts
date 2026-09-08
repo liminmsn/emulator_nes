@@ -1,4 +1,4 @@
 export default class {
-    static baseUrl = "http://192.168.1.2:8081";
+    static baseUrl = "https://env-00jy6p6k7nu9-static.normal.cloudstatic.cn";
     static game_list = `${this.baseUrl}/static/game_list.json`;
 }
