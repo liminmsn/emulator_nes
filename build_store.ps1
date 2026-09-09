@@ -1,0 +1,1 @@
+cocos-build -b;
