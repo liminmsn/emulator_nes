@@ -21,7 +21,7 @@
 - 游戏列表获取：通过 `getGameList()` 请求 JSON 数据
 - ROM 资源加载：通过 `fetchArrayBuffer()` 下载 `.nes` 文件
 - 图像输出：JSNES 的 `frameBuffer` 映射到 Cocos 的 `Texture2D`
-- 音频输出：通过 `onAudioSample` 推送 PCM 音频
+- 音频输出：保留 `onAudioSample` 音频回调和 WebAudio 实现；当前 `emulateSound` 配置已注释
 - 场景管理：从首页选择游戏，跳转到 `nes` 场景运行
 
 ---
@@ -44,9 +44,10 @@
 - 输出分辨率固定为 `256 x 240`
 
 ### 2.4 🔊 音频模拟
-- `emulateSound: true`
-- 每帧音频采样通过 `onAudioSample` 回调进行输出
-- 由项目的 `audio` 类统一处理播放
+- `SceneNes` 会调用 `audio.start()` 创建 WebAudio 输出链
+- `onAudioSample` 回调负责把左右声道采样写入音频环形缓冲区
+- 当前 `new jsnes.NES()` 中的 `emulateSound` 配置被注释，需要实际测试平台是否产生音频采样
+- 离开 NES 场景时由 `WebAudio.destroy()` 断开节点并关闭 `AudioContext`
 
 ### 2.5 🌐 平台兼容
 - 代码结构中存在 `web` 与 `wechat` 两种网络实现层
@@ -112,16 +113,16 @@ emulator_nes/
 
 ### 5.1 🧰 准备资源
 
-项目默认读取远程资源地址：
+项目默认读取远程资源地址【仅限开发可用】（当前配置见 `assets/scripts/lib/CCNetConfig.ts`）：
 
 ```ts
-static baseUrl = "http://127.0.0.1:8081";
+static baseUrl = "https://env-00jy6p6k7nu9-static.normal.cloudstatic.cn";
 ```
 
-这意味着你需要提供一个本地静态资源服务，确保如下资源可访问：
+因此默认需要确保以下远程资源可访问：
 
-- `http://127.0.0.1:8081/static/game_list.json`
-- `http://127.0.0.1:8081/static/rom/*.nes`
+- `${baseUrl}/static/game_list.json`
+- `${baseUrl}/static/rom/*.nes`
 
 示例资源列表 JSON 格式大致如下：
 
@@ -135,9 +136,9 @@ static baseUrl = "http://127.0.0.1:8081";
 ]
 ```
 
-### 5.2 🌍 启动本地静态服务器
+### 5.2 🌍 使用本地静态服务器（可选）
 
-建议使用任意本地静态文件服务器（如 Python、Node 或 Nginx）来托管 `static` 目录，使浏览器能够成功访问：
+如果需要改为本地资源，可使用任意静态文件服务器（如 Python、Node 或 Nginx）托管 `static` 目录，并同步修改 `CCNetConfig.baseUrl`：
 
 ```bash
 python -m http.server 8081
@@ -163,7 +164,7 @@ python -m http.server 8081
 
 ```ts
 export default class {
-    static baseUrl = "http://127.0.0.1:8081";
+    static baseUrl = "https://env-00jy6p6k7nu9-static.normal.cloudstatic.cn";
     static game_list = `${this.baseUrl}/static/game_list.json`;
 }
 ```
@@ -184,17 +185,13 @@ export default class {
 
 文件：`assets/scripts/SceneNes.ts`
 
-```ts
-private readonly ROM_URL: string = 'http://127.0.0.1:8081/static/rom/Adventure_Island_(USA).nes';
-```
-
-此处为默认演示 ROM 地址。实际项目中可改为从列表中传入的动态 URL。当前代码中也保留了注释形式：
+当前实现使用：
 
 ```ts
-// private readonly ROM_URL: string = CCGameData.ROM_URL;
+private readonly ROM_URL: string = CCGameData.ROM_URL;
 ```
 
-这说明在正式使用时，推荐从全局数据中读取当前选中的 ROM 路径。
+首页点击卡片时，会将 `CCNetConfig.baseUrl + item.file` 写入 `CCGameData.ROM_URL`，随后切换到 `nes` 场景。
 
 ---
 
@@ -217,7 +214,7 @@ this.nes = new jsnes.NES({
         this.updateTexture(frameBuffer);
     },
     onAudioSample: (l, r): void => this.audio.push(l, r),
-    emulateSound: true,
+    // emulateSound: true,
 });
 this.nes.loadROM(romBuffer);
 ```
@@ -235,10 +232,22 @@ this.nes.loadROM(romBuffer);
 `SceneNes.update()` 中通过累积时间控制模拟器刷新频率：
 
 ```ts
-private readonly FRAME_INTERVAL: number = 1 / 60;
+private readonly FRAME_INTERVAL: number = 1 / 90;
 ```
 
-这使模拟器以大约 60 FPS 的节奏推进 NES 运行。
+这使模拟器以大约 90 FPS 的节奏推进 NES 运行。实际显示帧率仍受设备和 Cocos 调度影响。
+
+### 7.4 🧹 资源生命周期与内存检查
+
+当前实现中需要关注以下资源：
+
+- `SceneNes` 每次创建一个 `Texture2D` 和一个 `SpriteFrame`，离开场景时应先解除 `Sprite.spriteFrame` 引用，再销毁这两个手动创建的对象。
+- `WebAudio.destroy()` 会断开 `ScriptProcessorNode`、`GainNode` 并关闭 `AudioContext`；重复进入 NES 场景时应确认该方法被调用。
+- `PrefabController` 保存着 `jsnes.NES` 引用，销毁场景前应调用 `setNes(null)`，避免控制器继续持有模拟器实例。
+- `loadROM()` 包含异步网络请求。场景销毁后，晚返回的请求不应继续创建 `jsnes.NES` 实例；建议使用请求令牌或取消请求进行保护。
+- `displayBuffer`、`displayU8` 和 `displayU32` 是组件固定持有的约 240 KiB CPU 缓冲区，不应在每帧重新创建。
+
+检查方式：反复进入和退出 `nes` 场景，观察 Cocos Profiler 的 JavaScript、Texture 和 Audio 内存是否在多轮操作后持续增长。单次增长可能来自引擎缓存，只有在垃圾回收后仍持续增长才更像泄漏。
 
 ---
 
@@ -271,7 +280,7 @@ private readonly FRAME_INTERVAL: number = 1 / 60;
 ### Q3：音频没有声音
 
 可能原因：
-- `emulateSound` 未开启
+- `SceneNes.ts` 中的 `emulateSound` 配置当前被注释
 - 浏览器或平台限制了音频播放
 - `audio.start()` 未执行
 
@@ -279,6 +288,19 @@ private readonly FRAME_INTERVAL: number = 1 / 60;
 - 确认 `this.audio.start()` 已调用
 - 在浏览器中手动允许音频播放
 - 检查 `onAudioSample` 是否有数据进入
+
+### Q4：反复切换场景后内存持续增长
+
+可能原因：
+- 自建 `Texture2D` 或 `SpriteFrame` 没有销毁
+- `PrefabController` 仍然持有旧的 NES 实例
+- ROM 请求在场景销毁后返回，并重新创建模拟器
+
+解决办法：
+- 在 `onDestroy()` 中解除 Sprite 的 `spriteFrame` 引用并销毁自建纹理资源
+- 调用 `controller.setNes(null)`
+- 为 `loadROM()` 增加销毁状态或请求令牌检查
+- 使用 Cocos Profiler 在多次场景切换和垃圾回收后复测
 
 ---
 
@@ -303,5 +325,3 @@ private readonly FRAME_INTERVAL: number = 1 / 60;
 ## 11. 📬 联系信息
 
 - 作者微信号：liminmsn
-
-如果你需要进一步扩展功能（如按键映射、存档、暂停、重启、手柄支持等），可以在现有结构上继续补充输入管理与状态恢复模块。
